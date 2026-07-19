@@ -1,95 +1,126 @@
 import { useState } from "react";
 import { supabase } from "../supabase";
 
-export default function Login({ setPage, setUser }) {
+export default function Login({ setPage }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function login() {
-    if (!email || !password) {
+    const cleanEmail = email.trim();
+
+    if (!cleanEmail || !password) {
       setMessage("이메일과 비밀번호를 모두 입력해 주세요.");
       return;
     }
 
-    setLoading(true);
-    setMessage("");
+    try {
+      setLoading(true);
+      setMessage("");
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+      const { data, error } =
+        await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
 
-    if (error) {
-      setMessage("로그인 실패: 이메일 또는 비밀번호를 확인해 주세요.");
+      if (error) {
+        throw error;
+      }
+
+      if (!data?.session || !data?.user) {
+        throw new Error("로그인 세션이 생성되지 않았습니다.");
+      }
+
+      setMessage("로그인 성공!");
+
+      // App.jsx의 onAuthStateChange가 dashboard로 이동시킴
+      setPage("dashboard");
+    } catch (error) {
+      console.error("이메일 로그인 오류:", error);
+
+      setMessage(
+        `로그인 실패: ${
+          error?.message || "알 수 없는 오류가 발생했습니다."
+        }`
+      );
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const authUser = data.user;
-
-    setUser({
-      id: authUser.id,
-      email: authUser.email,
-      name:
-        authUser.user_metadata?.name ||
-        authUser.user_metadata?.full_name ||
-        authUser.email?.split("@")[0] ||
-        "사용자",
-      school: authUser.user_metadata?.school || "학교 미설정",
-      role: authUser.user_metadata?.role || "멘티",
-    });
-
-    setPage("dashboard");
-    setLoading(false);
   }
 
   async function googleLogin() {
-    setLoading(true);
-    setMessage("");
+    try {
+      setLoading(true);
+      setMessage("");
 
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: window.location.origin,
-      },
-    });
+      const { data, error } =
+        await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo: `${window.location.origin}/`,
+          },
+        });
 
-    if (error) {
-      setMessage(`Google 로그인 실패: ${error.message}`);
+      if (error) {
+        throw error;
+      }
+
+      if (!data?.url) {
+        throw new Error(
+          "Google 로그인 주소를 불러오지 못했습니다."
+        );
+      }
+    } catch (error) {
+      console.error("Google 로그인 오류:", error);
+
+      setMessage(
+        `Google 로그인 실패: ${
+          error?.message || "알 수 없는 오류가 발생했습니다."
+        }`
+      );
+
       setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-blue-50">
-      <div className="bg-white p-10 rounded-3xl shadow-xl w-96">
+    <div className="min-h-screen flex items-center justify-center bg-blue-50 p-5">
+      <div className="bg-white p-10 rounded-3xl shadow-xl w-full max-w-96">
         <h1 className="text-3xl font-bold text-blue-700 text-center mb-6">
           로그인
         </h1>
 
         <input
           type="email"
+          autoComplete="email"
           className="w-full border p-3 rounded-xl mb-3"
           placeholder="이메일"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
+          disabled={loading}
         />
 
         <input
           type="password"
+          autoComplete="current-password"
           className="w-full border p-3 rounded-xl mb-3"
           placeholder="비밀번호"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter") login();
+            if (event.key === "Enter" && !loading) {
+              login();
+            }
           }}
+          disabled={loading}
         />
 
         {message && (
-          <p className="mb-4 text-sm text-center text-red-500">{message}</p>
+          <p className="mb-4 text-sm text-center text-red-500 break-words">
+            {message}
+          </p>
         )}
 
         <button
@@ -113,12 +144,13 @@ export default function Login({ setPage, setUser }) {
           disabled={loading}
           className="w-full border border-gray-300 bg-white py-3 rounded-xl font-bold text-gray-700 disabled:opacity-50"
         >
-          Google로 로그인
+          {loading ? "연결 중..." : "Google로 로그인"}
         </button>
 
         <button
           type="button"
           onClick={() => setPage("register")}
+          disabled={loading}
           className="w-full mt-4 text-blue-600"
         >
           회원가입하기
@@ -127,6 +159,7 @@ export default function Login({ setPage, setUser }) {
         <button
           type="button"
           onClick={() => setPage("home")}
+          disabled={loading}
           className="w-full mt-3 text-sm text-gray-500"
         >
           홈으로 돌아가기
